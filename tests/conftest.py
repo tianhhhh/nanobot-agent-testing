@@ -83,6 +83,35 @@ def _stop(process: subprocess.Popen) -> None:
         process.wait(timeout=5)
 
 
+def _warm_up_api(log_path: Path) -> None:
+    """Move one-time agent initialization out of the first measured API test."""
+    payload = json.dumps(
+        {
+            "session_id": "automation-warmup",
+            "messages": [{"role": "user", "content": "warm up"}],
+        }
+    ).encode("utf-8")
+    last_error: Exception | None = None
+    for _ in range(3):
+        request = urllib.request.Request(
+            f"{API_URL}/v1/chat/completions",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                if response.status == 200:
+                    return
+        except Exception as exc:  # noqa: BLE001 - report the last warm-up failure
+            last_error = exc
+        time.sleep(0.5)
+    pytest.fail(f"API 预热失败：{last_error}。日志：{log_path}", pytrace=False)
+
+
 @pytest.fixture(scope="session")
 def test_environment(tmp_path_factory: pytest.TempPathFactory) -> TestEnvironment:
     root = tmp_path_factory.mktemp("nanobot-mvp")
@@ -188,6 +217,7 @@ def services(test_environment: TestEnvironment) -> Iterator[None]:
             )
             processes.append((process, log_file))
             _wait_for(health_url, name, process, log_path)
+        _warm_up_api(test_environment.logs / "api.log")
         yield
     finally:
         for process, _ in reversed(processes):

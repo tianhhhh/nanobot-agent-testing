@@ -98,8 +98,10 @@ def test_at_mention_can_reference_a_historical_chat(chat_page, session_page) -> 
     handle = session_page.handle_for_title(title)
     _create_chat(chat_page)
 
-    chat_page.composer.fill(f"@{title}")
-    option = chat_page.page.get_by_role("option", name=re.compile(title))
+    chat_page.composer.fill(f"@{handle}")
+    option = chat_page.page.get_by_role(
+        "option", name=re.compile(rf"@{re.escape(handle)}\b")
+    )
     expect(option).to_be_visible(timeout=20_000)
     option.click()
     chat_page.composer.type(" 请总结这个话题")

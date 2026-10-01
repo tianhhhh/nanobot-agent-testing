@@ -44,9 +44,9 @@ class ChatPage:
             )
 
     @allure.step("等待回复包含：{expected_text}")
-    def wait_for_reply(self, expected_text: str) -> None:
-        expect(self.message_region).to_contain_text(expected_text, timeout=30_000)
-        expect(self.stop_button).to_be_hidden(timeout=30_000)
+    def wait_for_reply(self, expected_text: str, *, timeout: int = 30_000) -> None:
+        expect(self.message_region).to_contain_text(expected_text, timeout=timeout)
+        expect(self.stop_button).to_be_hidden(timeout=timeout)
 
     @allure.step("等待进入流式响应状态")
     def wait_until_streaming(self) -> None:

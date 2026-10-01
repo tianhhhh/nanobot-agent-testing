@@ -33,17 +33,18 @@ def test_sending_state_replaces_send_with_stop_control(chat_page) -> None:
 @allure.story("流式交互与恢复")
 @allure.title("停止慢速响应后能够继续下一轮对话")
 @allure.severity(allure.severity_level.CRITICAL)
+@pytest.mark.known_bug
+@pytest.mark.xfail(strict=True, reason="BUG-005：停止响应未可靠取消后台生成，见 BUGS.md")
 def test_stop_response_terminates_slow_stream_and_allows_next_turn(chat_page) -> None:
     chat_page.open_new_chat()
     chat_page.send_message(f"{SLOW_STREAM_TOKEN}-{uuid4().hex[:8]}")
     chat_page.wait_until_streaming()
-    chat_page.wait_for_partial_reply(MOCK_REPLY)
 
     chat_page.stop_response()
     follow_up = f"停止后继续-{uuid4().hex[:8]}"
     chat_page.send_message(follow_up)
 
-    chat_page.wait_for_reply(MOCK_REPLY)
+    chat_page.wait_for_reply(MOCK_REPLY, timeout=10_000)
 
 
 @allure.epic("nanobot 自动化测试")

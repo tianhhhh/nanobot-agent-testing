@@ -54,7 +54,7 @@ def test_model_service_failure_returns_a_5xx_error(api_client) -> None:
 @allure.title("SSE 中途异常时不得返回正常 DONE 标记")
 @allure.severity(allure.severity_level.CRITICAL)
 @pytest.mark.known_bug
-@pytest.mark.xfail(strict=True, reason="BUG-005：SSE 上游异常后仍返回正常 DONE，见 BUGS.md")
+@pytest.mark.xfail(strict=True, reason="BUG-004：SSE 上游异常后仍返回正常 DONE，见 BUGS.md")
 def test_interrupted_sse_does_not_emit_normal_done_marker(api_client) -> None:
     lines = list(
         api_client.post_sse(

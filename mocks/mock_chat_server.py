@@ -20,13 +20,24 @@ DEFAULT_REPLY = "你好！我是 mock 回复，用于自动化测试。"
 MODEL_ID = "mock-model"
 
 
+def _content_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    return " ".join(
+        str(part.get("text", ""))
+        for part in content
+        if isinstance(part, dict) and part.get("type") == "text"
+    )
+
+
 def _last_user_text(messages: object) -> str:
     if not isinstance(messages, list):
         return ""
     for message in reversed(messages):
         if isinstance(message, dict) and message.get("role") == "user":
-            content = message.get("content", "")
-            return content if isinstance(content, str) else ""
+            return _content_text(message.get("content", ""))
     return ""
 
 
@@ -34,11 +45,11 @@ def _user_texts(messages: object) -> list[str]:
     if not isinstance(messages, list):
         return []
     return [
-        content
+        text
         for message in messages
         if isinstance(message, dict)
         and message.get("role") == "user"
-        and isinstance((content := message.get("content")), str)
+        and (text := _content_text(message.get("content")))
     ]
 
 
@@ -85,6 +96,15 @@ class Handler(BaseHTTPRequestHandler):
 
         request = self._body()
         prompt = _last_user_text(request.get("messages"))
+        messages = request.get("messages")
+        last_content = messages[-1].get("content") if isinstance(messages, list) and messages else None
+        print(
+            "Mock request "
+            f"stream={bool(request.get('stream'))} "
+            f"content_type={type(last_content).__name__} "
+            f"prompt={prompt[:80]!r}",
+            flush=True,
+        )
         if HTTP_ERROR_TOKEN in prompt:
             self._json(500, {"error": {"message": "injected model service failure"}})
             return

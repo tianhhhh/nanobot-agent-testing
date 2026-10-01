@@ -135,21 +135,18 @@ def test_chat_rejects_malformed_json(api_client) -> None:
 @allure.epic("nanobot 自动化测试")
 @allure.feature("API 测试")
 @allure.story("请求校验")
-@allure.title("错误 Content-Type 的 JSON 请求应被拒绝")
+@allure.title("带字符集参数的 JSON Content-Type 能够正常请求")
 @allure.severity(allure.severity_level.NORMAL)
 @pytest.mark.regression
-@pytest.mark.known_bug
-@pytest.mark.xfail(strict=True, reason="BUG-004：接口未拒绝错误的 Content-Type，见 BUGS.md")
-def test_chat_rejects_json_sent_with_an_unsupported_content_type(api_client) -> None:
+def test_chat_accepts_json_content_type_with_charset(api_client) -> None:
     response = api_client.post_raw(
         "/v1/chat/completions",
         body='{"messages":[{"role":"user","content":"hello"}]}',
-        content_type="text/plain",
-        check=False,
+        content_type="application/json; charset=utf-8",
     )
 
-    assert response.status_code == 400
-    assert response.json()["error"]["message"] == "Invalid JSON body"
+    assert response.status_code == 200
+    assert response.json()["object"] == "chat.completion"
 
 
 @allure.epic("nanobot 自动化测试")

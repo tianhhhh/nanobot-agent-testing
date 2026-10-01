@@ -29,16 +29,7 @@
 - 风险：调用方无法区分“图片分析成功”和“图片没有被服务端接收”。
 - 复现命令：`python -m pytest tests/api/test_chat_attachments.py -k corrupted --runxfail`。
 
-## BUG-004：JSON 请求使用错误 Content-Type 时仍可能被接受
-
-- 对应测试：`test_chat_rejects_json_sent_with_an_unsupported_content_type`
-- 当前状态：自动化已复现，使用严格 `xfail` 跟踪。
-- 预期：`text/plain` 等不支持的媒体类型返回 `400` 或 `415`。
-- 实际：服务端直接尝试解析请求体 JSON，没有显式限制 Content-Type。
-- 风险：接口契约不清晰，网关、客户端和服务端可能出现行为差异。
-- 复现命令：`python -m pytest tests/api/test_chat_completions.py -k content_type --runxfail`。
-
-## BUG-005：SSE 上游中途异常后仍返回正常完成标记
+## BUG-004：SSE 上游中途异常后仍返回正常完成标记
 
 - 对应测试：`test_interrupted_sse_does_not_emit_normal_done_marker`
 - 当前状态：自动化已复现，使用严格 `xfail` 跟踪。
@@ -46,3 +37,20 @@
 - 实际：上游只产生部分数据后断流，客户端仍收到 `finish_reason=stop` 和 `[DONE]`。
 - 风险：调用方会把不完整回答误判为正常完成，无法触发重试或错误提示。
 - 复现命令：`python -m pytest tests/api/test_chat_resilience.py -k interrupted --runxfail`。
+
+## BUG-005：停止响应未可靠取消后台生成
+
+- 对应测试：`test_stop_response_terminates_slow_stream_and_allows_next_turn`
+- 当前状态：自动化已复现，测试使用严格 `xfail` 跟踪。
+- 预期：点击“停止响应”后终止当前生成，下一轮普通对话能够及时执行。
+- 实际：慢速请求仍在后台运行约 22 秒；按钮可能持续显示，或下一轮请求等待旧请求自然结束。
+- 风险：用户认为任务已经停止，但模型调用仍占用资源，并阻塞后续交互。
+- 复现命令：`python -m pytest tests/ui/test_chat_resilience.py -k stop_response --runxfail`。
+- 证据位置：Gateway 日志中停止操作后，原慢速请求仍然输出完整 `Response`。
+
+## 已排除：错误 Content-Type 的 JSON 请求
+
+- 原测试：`test_chat_rejects_json_sent_with_an_unsupported_content_type`
+- 排查结论：不是已确认的产品缺陷。当前接口约定支持 JSON 和 multipart，但没有规定
+  `text/plain` 必须返回 `400` 或 `415`；服务端对非 multipart 请求尝试解析 JSON 属于宽松兼容行为。
+- 处理：移除错误的 `xfail`，替换为对 `application/json; charset=utf-8` 的合法兼容性验证。
