@@ -2,8 +2,10 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 reports/*
 !reports/.gitkeep
 test-results/
+ci-status/
 runtime/
 .coverage

@@ -1,0 +1,7 @@
+"""Stable control tokens understood by the deterministic model mock."""
+
+CONTEXT_TOKEN = "[MOCK:CONTEXT]"
+HTTP_ERROR_TOKEN = "[MOCK:HTTP_500]"
+SLOW_STREAM_TOKEN = "[MOCK:SLOW_STREAM]"
+STREAM_ABORT_TOKEN = "[MOCK:STREAM_ABORT]"
+TIMEOUT_TOKEN = "[MOCK:TIMEOUT]"

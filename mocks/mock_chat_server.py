@@ -8,6 +8,14 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from mock_scenarios import (
+    CONTEXT_TOKEN,
+    HTTP_ERROR_TOKEN,
+    SLOW_STREAM_TOKEN,
+    STREAM_ABORT_TOKEN,
+    TIMEOUT_TOKEN,
+)
+
 DEFAULT_REPLY = "你好！我是 mock 回复，用于自动化测试。"
 MODEL_ID = "mock-model"
 
@@ -20,6 +28,18 @@ def _last_user_text(messages: object) -> str:
             content = message.get("content", "")
             return content if isinstance(content, str) else ""
     return ""
+
+
+def _user_texts(messages: object) -> list[str]:
+    if not isinstance(messages, list):
+        return []
+    return [
+        content
+        for message in messages
+        if isinstance(message, dict)
+        and message.get("role") == "user"
+        and isinstance((content := message.get("content")), str)
+    ]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -65,7 +85,20 @@ class Handler(BaseHTTPRequestHandler):
 
         request = self._body()
         prompt = _last_user_text(request.get("messages"))
-        reply = f"【{prompt[:12]}】\n\n{DEFAULT_REPLY}"
+        if HTTP_ERROR_TOKEN in prompt:
+            self._json(500, {"error": {"message": "injected model service failure"}})
+            return
+        if TIMEOUT_TOKEN in prompt:
+            time.sleep(8)
+
+        user_texts = _user_texts(request.get("messages"))
+        reply = (
+            "CONTEXT=" + json.dumps(user_texts, ensure_ascii=False)
+            if CONTEXT_TOKEN in prompt
+            else f"【{prompt[:12]}】\n\n{DEFAULT_REPLY}"
+        )
+        if SLOW_STREAM_TOKEN in prompt:
+            reply = f"{reply}\n" + "慢速流式内容。" * 80
         model = request.get("model") or MODEL_ID
         if not request.get("stream"):
             self._json(
@@ -93,7 +126,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         chunk_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
         try:
-            for part in (reply[index : index + 6] for index in range(0, len(reply), 6)):
+            for index, part in enumerate(
+                reply[offset : offset + 6] for offset in range(0, len(reply), 6)
+            ):
                 payload = {
                     "id": chunk_id,
                     "object": "chat.completion.chunk",
@@ -105,7 +140,10 @@ class Handler(BaseHTTPRequestHandler):
                 }
                 self.wfile.write(f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode())
                 self.wfile.flush()
-                time.sleep(0.04)
+                if STREAM_ABORT_TOKEN in prompt and index == 0:
+                    self.close_connection = True
+                    return
+                time.sleep(0.2 if SLOW_STREAM_TOKEN in prompt else 0.04)
             self.wfile.write(b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n')
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
@@ -124,4 +162,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

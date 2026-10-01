@@ -13,11 +13,13 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+import allure
 import pytest
 from playwright.sync_api import Page
 
 from pages.attachment_page import AttachmentPage
 from pages.chat_page import ChatPage
+from pages.session_page import SessionPage
 from utils.api_client import ApiClient
 
 WEBUI_PORT = 8765
@@ -96,7 +98,8 @@ def test_environment(tmp_path_factory: pytest.TempPathFactory) -> TestEnvironmen
                     "custom": {"apiKey": None, "apiBase": f"{MOCK_URL}/v1"}
                 },
                 "modelPresets": {
-                    "Mock A": {"provider": "custom", "model": "mock-model"}
+                    "Mock A": {"provider": "custom", "model": "mock-model"},
+                    "Mock B": {"provider": "custom", "model": "mock-model-b"},
                 },
                 "agents": {
                     "defaults": {"modelPreset": "Mock A", "workspace": str(workspace)}
@@ -116,7 +119,7 @@ def test_environment(tmp_path_factory: pytest.TempPathFactory) -> TestEnvironmen
                     "host": "127.0.0.1",
                     "port": API_PORT,
                     "apiKey": API_KEY,
-                    "timeout": 30,
+                    "timeout": 6,
                 },
             },
             ensure_ascii=False,
@@ -191,7 +194,7 @@ def services(test_environment: TestEnvironment) -> Iterator[None]:
             _stop(process)
         for _, log_file in processes:
             log_file.close()
-        report_logs = Path("reports") / "logs"
+        report_logs = Path(os.getenv("SERVICE_LOG_DIR", "reports/logs"))
         report_logs.mkdir(parents=True, exist_ok=True)
         for log in test_environment.logs.glob("*.log"):
             (report_logs / log.name).write_bytes(log.read_bytes())
@@ -215,6 +218,52 @@ def chat_page(page: Page, services: None) -> ChatPage:
 @pytest.fixture
 def attachment_page(page: Page, services: None) -> AttachmentPage:
     return AttachmentPage(page)
+
+
+@pytest.fixture
+def session_page(page: Page, services: None) -> SessionPage:
+    return SessionPage(page)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def allure_environment_metadata(request: pytest.FixtureRequest) -> None:
+    """Write execution context next to the raw Allure result files."""
+    configured_results = request.config.getoption("allure_report_dir")
+    if not configured_results:
+        return
+    results = Path(configured_results)
+    results.mkdir(parents=True, exist_ok=True)
+    (results / "environment.properties").write_text(
+        "tested.system=nanobot\n"
+        f"python.version={sys.version.split()[0]}\n"
+        "browser=Chromium\n"
+        "model.backend=deterministic local mock\n",
+        encoding="utf-8",
+    )
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
+    """Attach a browser screenshot to Allure when a UI test fails."""
+    outcome = yield
+    report = outcome.get_result()
+    if report.when != "call" or not report.failed:
+        return
+    page = item.funcargs.get("page")
+    if page is not None and not page.is_closed():
+        allure.attach(
+            page.screenshot(full_page=True),
+            name="failure-screenshot",
+            attachment_type=allure.attachment_type.PNG,
+        )
+    environment = item.funcargs.get("test_environment")
+    if environment is not None:
+        for log_path in environment.logs.glob("*.log"):
+            allure.attach.file(
+                log_path,
+                name=f"service-log-{log_path.stem}",
+                attachment_type=allure.attachment_type.TEXT,
+            )
 
 
 @pytest.fixture(scope="session")
